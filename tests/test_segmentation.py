@@ -13,7 +13,7 @@ from forest_panoptic_nav.segmentation import PanopticResult, PanopticSegmenter
 @pytest.fixture
 def segmenter():
     """PanopticSegmenter using heuristic fallback (no model)."""
-    return PanopticSegmenter(model_path=None)
+    return PanopticSegmenter(model_path=None, method="heuristic")
 
 
 @pytest.fixture
@@ -128,7 +128,7 @@ class TestPanopticSegmenter:
 
     def test_model_load_raises(self, tmp_path):
         with pytest.raises(NotImplementedError):
-            PanopticSegmenter(model_path=tmp_path / "fake_model.pt")
+            PanopticSegmenter(model_path=tmp_path / "fake_model.pt", method="ml")
 
     def test_confidence_in_range(self, segmenter, sample_points):
         result = segmenter.predict(sample_points)

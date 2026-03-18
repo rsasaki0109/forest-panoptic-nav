@@ -6,6 +6,8 @@
 
 Panoptic segmentation in forest environments for autonomous navigation, built on the [FinnWoodlands](https://doi.org/10.1016/j.dib.2023.109700) dataset (2023).
 
+**No training required.** The default zero-shot segmentation pipeline uses RANSAC ground estimation, DBSCAN clustering, and geometric shape analysis to classify forest point clouds -- no ML model or GPU needed.
+
 FinnWoodlands provides 5,170 stereo RGB frames and corresponding LiDAR point clouds collected with a backpack-mounted Ouster OS1 + ZED2 setup in Finnish forests. 300 frames include panoptic annotations covering:
 
 - **Things** (instance): Spruce, Birch, Pine tree trunks
@@ -39,11 +41,19 @@ This tool segments the scene into these classes, fuses LiDAR and camera data, an
             +---------------+------------------+
             |       segmentation.py            |
             |     PanopticSegmenter            |
-            |  (ML model or heuristic          |
-            |   height-based fallback)         |
-            +---------------+------------------+
+            |  method = zero_shot | heuristic  |
+            |            | ml                  |
+            +------+--------+---------+--------+
+                   |        |         |
+         +---------+  +-----+---+  +--+--------+
+         |zero_shot|  |heuristic|  | ml model  |
+         |  .py    |  |(builtin)|  |(user ckpt)|
+         +---------+  +---------+  +-----------+
+                   \        |         /
+                    v       v        v
+                      PanopticResult
                             |
-                            v  PanopticResult
+                            v
             +---------------+------------------+
             |      traversability.py           |
             |    TraversabilityMapper           |
@@ -54,6 +64,19 @@ This tool segments the scene into these classes, fuses LiDAR and camera data, an
                             v  CostMap
                      Path Planning
 ```
+
+### Zero-Shot Pipeline (default)
+
+The `zero_shot` method requires no training data and works out of the box:
+
+1. **Ground plane estimation** -- RANSAC on the lowest 30% of points to fit a plane
+2. **Ground removal** -- Points below 0.3m above the plane are classified as Ground/Track
+3. **Track detection** -- Grid-based local flatness analysis identifies smooth path regions
+4. **Height filtering** -- Points 0.5m--8m above ground are trunk candidates
+5. **DBSCAN clustering** -- Groups nearby above-ground points into individual objects
+6. **Shape classification** -- Each cluster's aspect ratio determines its class:
+   - Tall + thin (aspect ratio > 1.5, radius < 0.5m) = tree trunk
+   - Species assigned by height: Pine (tallest) > Spruce > Birch (shortest)
 
 ## Semantic Class Definitions
 
@@ -82,7 +105,12 @@ For GPU support, install PyTorch with CUDA first: https://pytorch.org/get-starte
 ### Run panoptic segmentation
 
 ```bash
+# Zero-shot (default, no training required)
 forest-panoptic-nav segment /path/to/finnwoodlands --output output/seg
+
+# Or explicitly choose a method
+forest-panoptic-nav segment /path/to/finnwoodlands --method zero_shot --output output/seg
+forest-panoptic-nav segment /path/to/finnwoodlands --method heuristic --output output/seg
 ```
 
 ### Generate traversability map
@@ -91,12 +119,30 @@ forest-panoptic-nav segment /path/to/finnwoodlands --output output/seg
 forest-panoptic-nav traversability output/seg --output output/trav --resolution 0.1
 ```
 
+### Evaluate against ground truth
+
+```bash
+forest-panoptic-nav evaluate output/seg /path/to/finnwoodlands/annotations
+```
+
+Output includes per-class IoU, mIoU, and overall accuracy.
+
 ### Visualize results
 
 ```bash
 forest-panoptic-nav visualize output/seg --mode segmentation
 forest-panoptic-nav visualize output/trav --mode traversability
 ```
+
+## Evaluation Metrics
+
+The `evaluate` command and `evaluation.py` module compute:
+
+- **mIoU** (mean Intersection over Union) -- averaged over all present classes
+- **Per-class IoU** -- IoU(c) = TP / (TP + FP + FN) for each class
+- **Per-class accuracy** -- TP / (TP + FN) for each class
+- **Overall accuracy** -- total correct predictions / total points
+- **Confusion matrix** -- (7 x 7) matrix for all semantic classes
 
 ## Dataset Layout
 

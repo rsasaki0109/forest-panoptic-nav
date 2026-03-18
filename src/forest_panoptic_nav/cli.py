@@ -16,7 +16,13 @@ def cli() -> None:
 @click.option("--frame-id", "-f", type=int, default=None, help="Process a single frame by ID.")
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=None, help="Output directory.")
 @click.option("--use-fusion/--no-fusion", default=True, help="Enable LiDAR-RGB fusion.")
-def segment(data_dir: Path, frame_id: int | None, output: Path | None, use_fusion: bool) -> None:
+@click.option(
+    "--method", "-m",
+    type=click.Choice(["zero_shot", "heuristic", "ml"]),
+    default="zero_shot",
+    help="Segmentation method (default: zero_shot).",
+)
+def segment(data_dir: Path, frame_id: int | None, output: Path | None, use_fusion: bool, method: str) -> None:
     """Run panoptic segmentation on FinnWoodlands data.
 
     DATA_DIR is the root directory of the FinnWoodlands dataset.
@@ -29,7 +35,7 @@ def segment(data_dir: Path, frame_id: int | None, output: Path | None, use_fusio
     output.mkdir(parents=True, exist_ok=True)
 
     loader = FinnWoodlandsLoader(data_dir)
-    segmenter = PanopticSegmenter()
+    segmenter = PanopticSegmenter(method=method)
     fusion = LidarRgbFusion() if use_fusion else None
 
     frame_ids = [frame_id] if frame_id is not None else loader.list_frame_ids()
@@ -77,6 +83,46 @@ def traversability(segmentation_dir: Path, output: Path | None, resolution: floa
         click.echo(f"  {seg_file.name}: grid {cost_map.grid.shape}, traversable {cost_map.traversable_ratio:.1%}")
 
     click.echo(f"Traversability maps saved to {output}")
+
+
+@cli.command()
+@click.argument("segmentation_dir", type=click.Path(exists=True, path_type=Path))
+@click.argument("annotation_dir", type=click.Path(exists=True, path_type=Path))
+def evaluate(segmentation_dir: Path, annotation_dir: Path) -> None:
+    """Evaluate segmentation against ground-truth annotations.
+
+    SEGMENTATION_DIR contains .npz files from the 'segment' command.
+    ANNOTATION_DIR contains ground-truth .npz files with semantic_labels.
+    """
+    import numpy as np
+    from .evaluation import evaluate_segmentation
+
+    seg_files = sorted(segmentation_dir.glob("frame_*.npz"))
+    if not seg_files:
+        click.echo("No segmentation files found.")
+        return
+
+    all_preds = []
+    all_gt = []
+
+    for seg_file in seg_files:
+        frame_id = seg_file.stem.replace("frame_", "")
+        ann_file = annotation_dir / f"{frame_id}.npz"
+        if not ann_file.exists():
+            continue
+        seg_data = np.load(seg_file)
+        ann_data = np.load(ann_file)
+        all_preds.append(seg_data["semantic_labels"])
+        all_gt.append(ann_data["semantic_labels"])
+
+    if not all_preds:
+        click.echo("No matching annotation files found.")
+        return
+
+    preds = np.concatenate(all_preds)
+    gt = np.concatenate(all_gt)
+    result = evaluate_segmentation(preds, gt)
+    click.echo(result.summary())
 
 
 @cli.command()
