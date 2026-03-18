@@ -1,0 +1,10 @@
+click>=8.0
+matplotlib>=3.5
+numpy>=1.22
+open3d>=0.17
+opencv-python>=4.5
+torch>=2.0
+
+[dev]
+pytest>=7.0
+ruff>=0.1

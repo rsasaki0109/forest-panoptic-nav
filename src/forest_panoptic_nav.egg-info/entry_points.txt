@@ -1,0 +1,2 @@
+[console_scripts]
+forest-panoptic-nav = forest_panoptic_nav.cli:cli
