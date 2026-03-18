@@ -15,6 +15,7 @@ dependencies = [
     "numpy>=1.22",
     "open3d>=0.17",
     "opencv-python>=4.5",
+    "scikit-learn>=1.0",
     "torch>=2.0",
 ]
 

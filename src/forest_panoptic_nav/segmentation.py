@@ -83,25 +83,42 @@ class PanopticResult:
 class PanopticSegmenter:
     """Panoptic segmenter for forest point clouds.
 
-    This is a stub implementation. Replace ``_run_model`` with an actual
-    trained model (e.g., a 3D point cloud transformer or sparse-conv network)
-    to get real predictions.
+    Supports three methods:
+    - ``"zero_shot"`` (default): Geometric zero-shot segmentation using RANSAC
+      ground estimation, DBSCAN clustering, and shape-based classification.
+      No training data required.
+    - ``"heuristic"``: Simple height-percentile-based fallback.
+    - ``"ml"``: Trained ML model (requires a model checkpoint).
 
     The interface is stable: call ``predict`` with a point cloud and optional
     per-point features to get a ``PanopticResult``.
     """
 
-    def __init__(self, model_path: Path | None = None, device: str = "cpu") -> None:
+    def __init__(
+        self,
+        model_path: Path | None = None,
+        device: str = "cpu",
+        method: str = "zero_shot",
+    ) -> None:
         """Initialize the segmenter.
 
         Args:
-            model_path: Path to trained model weights. None uses a heuristic stub.
+            model_path: Path to trained model weights. Only used when method="ml".
             device: Torch device string ('cpu', 'cuda', 'cuda:0', ...).
+            method: Segmentation method - "zero_shot", "heuristic", or "ml".
         """
+        if method not in ("zero_shot", "heuristic", "ml"):
+            raise ValueError(f"Unknown method: {method!r}. Use 'zero_shot', 'heuristic', or 'ml'.")
         self.device = device
+        self.method = method
         self.model = None
-        if model_path is not None:
+        self._zero_shot = None
+
+        if method == "ml" and model_path is not None:
             self.model = self._load_model(model_path)
+        elif method == "zero_shot":
+            from .zero_shot import ZeroShotForestSegmenter
+            self._zero_shot = ZeroShotForestSegmenter()
 
     def _load_model(self, path: Path):
         """Load a trained model from disk.
@@ -127,8 +144,10 @@ class PanopticSegmenter:
         Returns:
             PanopticResult with semantic labels and instance IDs.
         """
-        if self.model is not None:
+        if self.method == "ml" and self.model is not None:
             return self._run_model(points, features)
+        if self.method == "zero_shot" and self._zero_shot is not None:
+            return self._zero_shot.predict(points, features)
         return self._heuristic_predict(points)
 
     def _run_model(self, points: np.ndarray, features: np.ndarray | None) -> PanopticResult:
