@@ -29,6 +29,7 @@ DEFAULT_COSTS: dict[int, float] = {
     4: 1.0,   # spruce trunk — obstacle
     5: 1.0,   # birch trunk — obstacle
     6: 1.0,   # pine trunk — obstacle
+    7: 1.0,   # obstacle — rocks, fallen logs, etc.
 }
 
 TRAVERSABLE_THRESHOLD = 0.6  # cost <= this is considered traversable

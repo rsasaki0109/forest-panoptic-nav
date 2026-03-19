@@ -22,7 +22,13 @@ def cli() -> None:
     default="zero_shot",
     help="Segmentation method (default: zero_shot).",
 )
-def segment(data_dir: Path, frame_id: int | None, output: Path | None, use_fusion: bool, method: str) -> None:
+@click.option(
+    "--visualize", "-v",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Save visualization PNG to this path.",
+)
+def segment(data_dir: Path, frame_id: int | None, output: Path | None, use_fusion: bool, method: str, visualize: Path | None) -> None:
     """Run panoptic segmentation on FinnWoodlands data.
 
     DATA_DIR is the root directory of the FinnWoodlands dataset.
@@ -50,6 +56,13 @@ def segment(data_dir: Path, frame_id: int | None, output: Path | None, use_fusio
             result = segmenter.predict(sample.point_cloud)
         result.save(output / f"frame_{fid:06d}.npz")
         click.echo(f"  Frame {fid}: {result.num_instances} instances, {result.num_semantic_classes} semantic classes")
+
+        if visualize is not None:
+            from .zero_shot import visualize_segmentation
+            visualize.mkdir(parents=True, exist_ok=True)
+            viz_path = visualize / f"frame_{fid:06d}_segmentation.png"
+            visualize_segmentation(result, str(viz_path))
+            click.echo(f"  Visualization saved to {viz_path}")
 
     click.echo(f"Results saved to {output}")
 
