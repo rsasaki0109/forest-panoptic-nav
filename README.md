@@ -4,16 +4,22 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-Panoptic segmentation in forest environments for autonomous navigation, built on the [FinnWoodlands](https://doi.org/10.1016/j.dib.2023.109700) dataset (2023).
+**Forest Traversability Mapping + Path Planning** from LiDAR point clouds.
 
-**No training required.** The default zero-shot segmentation pipeline uses RANSAC ground estimation, DBSCAN clustering, and geometric shape analysis to classify forest point clouds -- no ML model or GPU needed.
+Generate traversability cost maps from semantically segmented forest point clouds and plan obstacle-aware paths through them with A* search. No other open-source tool produces traversability cost grids directly from forest LiDAR data.
 
-FinnWoodlands provides 5,170 stereo RGB frames and corresponding LiDAR point clouds collected with a backpack-mounted Ouster OS1 + ZED2 setup in Finnish forests. 300 frames include panoptic annotations covering:
+Built on the [FinnWoodlands](https://doi.org/10.1016/j.dib.2023.109700) dataset (2023) -- 5,170 stereo RGB frames and corresponding LiDAR scans collected in Finnish forests with a backpack-mounted Ouster OS1 + ZED2 setup. 300 frames include panoptic annotations covering tree trunks (Spruce, Birch, Pine), Ground, Track, and Lake.
 
-- **Things** (instance): Spruce, Birch, Pine tree trunks
-- **Stuff** (semantic): Ground, Track, Lake
+**No training required.** The default zero-shot pipeline uses RANSAC ground estimation, DBSCAN clustering, and geometric shape analysis -- no ML model or GPU needed.
 
-This tool segments the scene into these classes, fuses LiDAR and camera data, and generates traversability cost maps for navigation.
+## Key Features
+
+- **Traversability cost maps** -- Convert labelled forest point clouds into 2D cost grids where each cell encodes how difficult it is to traverse (ground/track = low cost, trees/water = impassable)
+- **A\* path planning** -- Find the lowest-cost route through the forest on the generated cost grid, with 8-connected search and obstacle avoidance
+- **Cost map I/O** -- Save/load cost maps as `.npz`; optional GeoTIFF export for GIS integration
+- **Panoptic segmentation** -- Zero-shot (RANSAC + DBSCAN + shape analysis), heuristic, or ML-based methods
+- **LiDAR-RGB fusion** -- Project LiDAR points onto stereo images for per-point colour features
+- **Evaluation** -- Per-class IoU, mIoU, confusion matrix against ground-truth annotations
 
 ## Architecture
 
@@ -62,7 +68,14 @@ This tool segments the scene into these classes, fuses LiDAR and camera data, an
             +---------------+------------------+
                             |
                             v  CostMap
-                     Path Planning
+            +---------------+------------------+
+            |      path_planner.py             |
+            |    A* search on cost grid        |
+            |  (8-connected, obstacle-aware)   |
+            +----------------------------------+
+                            |
+                            v  PathResult
+                     Waypoints + Viz
 ```
 
 ### Zero-Shot Pipeline (default)
@@ -102,6 +115,22 @@ For GPU support, install PyTorch with CUDA first: https://pytorch.org/get-starte
 
 ## Usage
 
+### Generate traversability cost map
+
+```bash
+# Segment first, then build cost map
+forest-panoptic-nav segment /path/to/finnwoodlands --output output/seg
+forest-panoptic-nav traversability output/seg --output output/trav --resolution 0.1
+```
+
+### Plan a path on the cost map
+
+```bash
+forest-panoptic-nav plan output/trav/frame_000000.npz \
+    --start 1.0,1.0 --goal 19.0,19.0 \
+    -o path.png
+```
+
 ### Run panoptic segmentation
 
 ```bash
@@ -111,12 +140,6 @@ forest-panoptic-nav segment /path/to/finnwoodlands --output output/seg
 # Or explicitly choose a method
 forest-panoptic-nav segment /path/to/finnwoodlands --method zero_shot --output output/seg
 forest-panoptic-nav segment /path/to/finnwoodlands --method heuristic --output output/seg
-```
-
-### Generate traversability map
-
-```bash
-forest-panoptic-nav traversability output/seg --output output/trav --resolution 0.1
 ```
 
 ### Evaluate against ground truth
