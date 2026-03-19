@@ -139,6 +139,44 @@ def evaluate(segmentation_dir: Path, annotation_dir: Path) -> None:
 
 
 @cli.command()
+@click.argument("cost_map_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--start", "-s", required=True, help="Start position as x,y (e.g. 1.0,1.0).")
+@click.option("--goal", "-g", required=True, help="Goal position as x,y (e.g. 19.0,19.0).")
+@click.option("--output", "-o", type=click.Path(path_type=Path), default=None, help="Save path visualization PNG.")
+def plan(cost_map_file: Path, start: str, goal: str, output: Path | None) -> None:
+    """Plan a path on a traversability cost map using A* search.
+
+    COST_MAP_FILE is a .npz file produced by the 'traversability' command.
+    """
+    from .costmap_io import load_costmap
+    from .path_planner import plan_path, plot_path
+
+    cost_map = load_costmap(cost_map_file)
+
+    def _parse_xy(s: str) -> tuple[float, float]:
+        parts = s.split(",")
+        if len(parts) != 2:
+            raise click.BadParameter(f"Expected x,y but got '{s}'")
+        return float(parts[0]), float(parts[1])
+
+    start_xy = _parse_xy(start)
+    goal_xy = _parse_xy(goal)
+
+    result = plan_path(cost_map, start_xy, goal_xy)
+
+    if result.is_feasible:
+        click.echo(f"Path found: {result.num_waypoints} waypoints, "
+                    f"distance {result.distance:.1f}m, cost {result.total_cost:.2f}")
+    else:
+        click.echo("No feasible path found between start and goal.")
+
+    if output is not None:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        plot_path(cost_map, result, str(output))
+        click.echo(f"Visualization saved to {output}")
+
+
+@cli.command()
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
 @click.option("--mode", "-m", type=click.Choice(["segmentation", "traversability", "overlay"]), default="segmentation")
 @click.option("--save", "-s", type=click.Path(path_type=Path), default=None, help="Save figure to file instead of showing.")
